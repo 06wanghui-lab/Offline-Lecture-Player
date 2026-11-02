@@ -16,4 +16,3 @@ Everything runs locally in the browser. Videos and transcripts are not uploaded 
 - Supports common video formats such as MP4, MOV, M4V, and WebM.
 - Includes searchable transcripts and captions.
 - Intended mainly for my personal use.
-- Video and transcript files are not included in this repository.
