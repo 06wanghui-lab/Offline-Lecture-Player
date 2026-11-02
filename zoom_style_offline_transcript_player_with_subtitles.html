@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Offline Lecture Player · Video + Transcript + Captions</title>
+<style>
+  :root { color-scheme: light; --ink:#182231; --muted:#697788; --border:#dce4ec; --blue:#2463eb; --bluep:#eaf1ff; --bg:#f4f7fa; --card:#ffffff; }
+  * { box-sizing:border-box; }
+  [hidden] { display:none !important; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+  button, input { font:inherit; }
+  button { cursor:pointer; }
+  .shell { max-width:1750px; margin:auto; padding:22px 24px 28px; }
+  header { display:flex; align-items:center; justify-content:space-between; gap:15px; flex-wrap:wrap; margin-bottom:20px; }
+  .heading { display:flex; gap:13px; align-items:center; }
+  .logo { width:44px; height:44px; border-radius:13px; color:#fff; background:var(--blue); display:grid; place-items:center; font-weight:800; font-size:22px; }
+  h1 { font-size:21px; margin:0; letter-spacing:-0.4px; }
+  .sub { font-size:13px; color:var(--muted); margin-top:2px; }
+  .privacy { border:1px solid #d5e6df; background:#eef8f2; color:#28764b; border-radius:50px; padding:6px 11px; font-size:12px; font-weight:650; }
+  .upload { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:15px 17px; border:1px solid var(--border); background:#fff; border-radius:15px; margin-bottom:18px; }
+  .upload h2 { font-size:14px; margin:0 12px 0 0; }
+  .upload .selection { display:flex; align-items:center; gap:8px; min-width:0; }
+  .pill { border:1px solid #d4dce6; border-radius:9px; background:#fff; color:#172336; padding:8px 13px; font-weight:650; }
+  .pill:hover { border-color:#87a8ea; background:#f8faff; }
+  .pill:focus-visible, .cue:focus-visible, .small-btn:focus-visible { outline:3px solid #95b2ff; outline-offset:2px; }
+  .file-label { max-width:245px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; color:var(--muted); }
+  .upload input[type="file"] { display:none; }
+  #notice { min-height:18px; font-size:12px; color:var(--muted); margin-left:auto; }
+  .workspace { display:grid; grid-template-columns: minmax(0, 1fr) minmax(350px, 440px); gap:18px; align-items:stretch; height:min(76vh, 880px); min-height:500px; }
+  .video-card, .transcript-card { border:1px solid var(--border); border-radius:15px; background:var(--card); overflow:hidden; min-width:0; display:flex; flex-direction:column; box-shadow:0 3px 18px rgba(25,42,80,.04); }
+  .player-head { padding:14px 17px; display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; border-bottom:1px solid var(--border); }
+  .player-title { font-weight:700; font-size:14px; min-width:90px; flex:1; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+  .video-tools { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .tool-btn { border:1px solid #d2dbe6; border-radius:8px; color:#243650; padding:5px 10px; background:white; font-size:12px; font-weight:700; white-space:nowrap; }
+  .tool-btn:not(:disabled):hover { background:var(--bluep); border-color:#85a8f2; }
+  .tool-btn[aria-pressed="true"] { color:#1858db; background:var(--bluep); border-color:#93b2fb; }
+  .tool-btn:disabled { opacity:.45; cursor:not-allowed; }
+  .tool-btn:focus-visible { outline:3px solid #95b2ff; outline-offset:2px; }
+  .mini { color:var(--muted); font-size:12px; }
+  .video-wrap { background:#090c11; flex:1; min-height:0; position:relative; display:flex; align-items:center; justify-content:center; }
+  video { width:100%; height:100%; display:block; object-fit:contain; }
+  /* Custom captions are painted over the video instead of relying on browser subtitle menus.
+     The panel, video, and caption overlay are all driven by the same parsed VTT cues. */
+  .caption-overlay { position:absolute; z-index:3; left:50%; bottom:calc(var(--video-letterbox-y, 0px) + 68px); transform:translateX(-50%); pointer-events:none; display:flex; justify-content:center; width:94%; max-width:1050px; text-align:center; }
+  .caption-text { display:inline-block; max-width:100%; border-radius:7px; background:rgba(0,0,0,.80); color:white; font:600 clamp(17px, 2.2vw, 27px)/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; white-space:pre-line; overflow-wrap:anywhere; padding:5px 12px; text-shadow:0 1px 2px #000; box-decoration-break:clone; -webkit-box-decoration-break:clone; }
+  .video-wrap:fullscreen { background:black; }
+  .video-wrap:fullscreen .caption-overlay { bottom:calc(var(--video-letterbox-y, 0px) + 76px); }
+  .video-wrap:-webkit-full-screen { background:black; }
+  .video-wrap:-webkit-full-screen .caption-overlay { bottom:calc(var(--video-letterbox-y, 0px) + 76px); }
+  @media (max-width:600px) { .caption-overlay { bottom:calc(var(--video-letterbox-y, 0px) + 55px); } .caption-text { font-size:17px; padding:4px 9px; } }
+  .video-placeholder { color:#b8c3d3; text-align:center; padding:32px; max-width:350px; }
+  .video-placeholder svg { margin-bottom:9px; opacity:.85; }
+  .video-placeholder strong { display:block; color:#fff; font-size:17px; margin-bottom:4px; }
+  .bottom-note { padding:12px 16px; color:var(--muted); font-size:12px; border-top:1px solid var(--border); }
+  .transcript-head { padding:17px 17px 12px; border-bottom:1px solid var(--border); }
+  .transcript-title { font-size:17px; font-weight:760; text-align:center; margin:0 0 14px; }
+  .search { width:100%; border:1px solid #cad4df; border-radius:10px; padding:11px 12px; background:white; outline:none; }
+  .search:focus { border-color:var(--blue); box-shadow:0 0 0 3px #2463eb18; }
+  .tools { margin-top:11px; display:flex; align-items:center; justify-content:space-between; gap:9px; }
+  .follow { display:flex; align-items:center; gap:6px; color:#586a7d; font-size:12px; white-space:nowrap; cursor:pointer; }
+  .follow input { accent-color:var(--blue); }
+  .small-btn { padding:5px 8px; border:0; color:var(--blue); background:transparent; border-radius:5px; font-size:12px; font-weight:650; }
+  .small-btn:hover { background:var(--bluep); }
+  .transcript-list { min-height:0; overflow:auto; flex:1; padding:10px; overscroll-behavior:contain; }
+  .cue { width:100%; display:block; text-align:left; border:1px solid transparent; background:transparent; padding:11px 12px; border-radius:10px; margin-bottom:5px; color:var(--ink); }
+  .cue:hover { background:#f5f8fd; }
+  .cue.active { background:var(--bluep); border-color:#cbdcff; }
+  .cue-top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:5px; }
+  .cue-speaker { font-weight:700; font-size:13px; color:#24324b; }
+  .cue-time { color:var(--blue); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+  .cue-text { font-size:14px; white-space:pre-line; overflow-wrap:anywhere; }
+  mark { border-radius:2px; background:#fff1a5; }
+  .empty { text-align:center; color:var(--muted); padding:70px 24px; }
+  .empty strong { color:#425267; display:block; margin-bottom:5px; }
+  footer { padding:16px 2px 0; color:var(--muted); font-size:12px; }
+  body.dragging .upload { outline:3px dashed #81aaff; outline-offset:3px; background:#f3f7ff; }
+  @media (max-width:900px) { .workspace { grid-template-columns:1fr; height:auto; } .video-card { min-height:340px; } .video-wrap { min-height:290px; } .transcript-card { height:420px; } .shell { padding:15px; } }
+  @media (max-width:520px) { .upload { align-items:flex-start; } .selection { width:100%; } .file-label { max-width:50vw; } #notice { margin-left:0; } }
+</style>
+</head>
+<body>
+<div class="shell">
+  <header>
+    <div class="heading"><div class="logo" aria-hidden="true">▶</div><div><h1>Offline Lecture Player</h1><div class="sub">Zoom-style video + synced transcript + on-video captions</div></div></div>
+    <div class="privacy">🔒 Files stay on your Mac</div>
+  </header>
+
+  <section class="upload" aria-label="Choose local files" id="dropZone">
+    <h2>Open your recording</h2>
+    <div class="selection">
+      <label class="pill" for="videoFile">Choose video</label>
+      <input id="videoFile" type="file" accept="video/*,.mp4,.mov,.m4v,.webm">
+      <span id="videoName" class="file-label">No MP4 selected</span>
+    </div>
+    <div class="selection">
+      <label class="pill" for="vttFile">Choose transcript</label>
+      <input id="vttFile" type="file" accept=".vtt,text/vtt">
+      <span id="vttName" class="file-label">No VTT selected</span>
+    </div>
+    <div id="notice" role="status">Or drag both files here</div>
+  </section>
+
+  <main class="workspace">
+    <section class="video-card" aria-label="Video">
+      <div class="player-head">
+        <span class="player-title" id="videoTitle">Lecture video</span>
+        <div class="video-tools">
+          <span class="mini" id="durationLabel">00:00 / 00:00</span>
+          <button id="captionsToggle" class="tool-btn" type="button" aria-pressed="true" title="Show or hide captions on the video" disabled>CC On</button>
+          <button id="fullscreenToggle" class="tool-btn" type="button" title="Fullscreen with captions" disabled>⛶ Fullscreen</button>
+        </div>
+      </div>
+      <div class="video-wrap">
+        <div id="videoPlaceholder" class="video-placeholder"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="20" height="18" rx="3"></rect><path d="m10 8 6 4-6 4z"></path></svg><strong>Your lecture video appears here</strong>Select your MP4 above, then add its Zoom transcript (.vtt).</div>
+        <video id="video" controls playsinline preload="metadata" hidden></video>
+        <div id="captionOverlay" class="caption-overlay" aria-live="off" hidden><span id="captionText" class="caption-text"></span></div>
+      </div>
+      <div class="bottom-note">Captions appear at the bottom of the video when a VTT file is loaded. Use <strong>CC On/Off</strong> to toggle them independently of the right-side transcript. For fullscreen captions, use the <strong>⛶ Fullscreen</strong> button above the video.</div>
+    </section>
+    <section class="transcript-card" aria-label="Transcript">
+      <div class="transcript-head">
+        <h2 class="transcript-title">Audio Transcript</h2>
+        <input id="search" class="search" type="search" placeholder="Search transcript" aria-label="Search transcript" disabled>
+        <div class="tools">
+          <label class="follow"><input type="checkbox" id="follow" checked> Follow playback</label>
+          <span><span id="counter" class="mini">0 lines</span><button class="small-btn" type="button" id="jump">Jump to current</button></span>
+        </div>
+      </div>
+      <div class="transcript-list" id="transcriptList" tabindex="0" aria-live="off">
+        <div class="empty"><strong>No transcript loaded yet</strong>Choose your Zoom .vtt file to show the scrollable transcript here.</div>
+      </div>
+    </section>
+  </main>
+  <footer>Runs entirely in your browser without uploading your lectures. This HTML file has no external libraries or network requests. For best results, use matching MP4 and VTT files downloaded from the same Zoom recording.</footer>
+</div>
+<script>
+(() => {
+  'use strict';
+  const $ = (id) => document.getElementById(id);
+  const video = $('video');
+  const list = $('transcriptList');
+  const search = $('search');
+  const follow = $('follow');
+  const note = $('notice');
+  const captionsToggle = $('captionsToggle');
+  const fullscreenToggle = $('fullscreenToggle');
+  const captionOverlay = $('captionOverlay');
+  const captionText = $('captionText');
+  const videoWrap = video.closest('.video-wrap');
+  let captionsEnabled = true;
+  let displayedCaptionIndex = -2;
+  let videoUrl = null;
+  let cues = [];
+  let activeCueIndex = -1;
+  let rendered = new Map();
+  let cueElements = new Map();
+
+  const timeLabel = (seconds) => {
+    const v = Math.floor(Number.isFinite(seconds) && seconds >= 0 ? seconds : 0);
+    const hrs = Math.floor(v / 3600);
+    const mins = Math.floor((v % 3600) / 60);
+    const secs = v % 60;
+    return (hrs ? String(hrs).padStart(2, '0') + ':' : '') + String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+  };
+  const parseTime = (s) => {
+    const bits = s.trim().replace(',', '.').split(':');
+    if (bits.length < 2 || bits.length > 3 || bits.some(b => !/^\d+(?:\.\d+)?$/.test(b))) return NaN;
+    return bits.reduce((a, b) => a * 60 + Number(b), 0);
+  };
+  const cleanup = (s) => s
+    .replace(/<v\s+([^>]+)>/gi, (_, speaker) => speaker.trim() + ': ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ').replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+    .trim();
+
+  function parseVtt(source) {
+    const blocks = source.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').split(/\n[ \t]*\n/);
+    const parsed = [];
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trimEnd());
+      if (!lines.length || /^\s*(WEBVTT|NOTE|STYLE|REGION)(\s|$)/.test(lines[0])) continue;
+      const idx = lines.findIndex(l => l.includes('-->'));
+      if (idx === -1) continue;
+      const [startRaw, endRawWithSettings] = lines[idx].split(/\s*-->\s*/);
+      const start = parseTime(startRaw || '');
+      const end = parseTime((endRawWithSettings || '').trim().split(/\s+/)[0]);
+      if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) continue;
+      let text = cleanup(lines.slice(idx + 1).join('\n'));
+      if (!text) continue;
+      let speaker = '';
+      const match = text.match(/^([^\n:]{2,90}):\s+([\s\S]+)/);
+      if (match && !/^(https?|note|warning)$/i.test(match[1])) {
+        speaker = match[1];
+        text = match[2];
+      }
+      parsed.push({ start, end, text, speaker });
+    }
+    parsed.sort((a,b) => a.start - b.start);
+    return parsed;
+  }
+
+  function appendMarkedText(container, text, needle) {
+    if (!needle) { container.textContent = text; return; }
+    const lower = text.toLocaleLowerCase();
+    const n = needle.toLocaleLowerCase();
+    let offset = 0, at;
+    while ((at = lower.indexOf(n, offset)) !== -1) {
+      container.appendChild(document.createTextNode(text.slice(offset, at)));
+      const mark = document.createElement('mark');
+      mark.textContent = text.slice(at, at + n.length);
+      container.appendChild(mark);
+      offset = at + n.length;
+    }
+    container.appendChild(document.createTextNode(text.slice(offset)));
+  }
+
+  function getActiveIndex(t) {
+    let lo = 0, hi = cues.length - 1, best = -1;
+    while (lo <= hi) {
+      const mid = Math.floor((lo+hi)/2);
+      if (cues[mid].start <= t) { best=mid; lo=mid+1; } else { hi=mid-1; }
+    }
+    if (best >= 0 && t <= cues[best].end + 0.08) return best;
+    return -1;
+  }
+
+  function centerOnCue(index, smooth=false) {
+    const el = cueElements.get(index);
+    if (!el) return;
+    const target = list.scrollTop + el.getBoundingClientRect().top - list.getBoundingClientRect().top - (list.clientHeight - el.clientHeight) / 2;
+    list.scrollTo({ top: Math.max(0, target), behavior: smooth ? 'smooth' : 'auto' });
+  }
+
+  function updateCaptions(index, force=false) {
+    const shouldShow = captionsEnabled && index >= 0 && !video.hidden;
+    if (!shouldShow) {
+      captionOverlay.hidden = true;
+      captionText.textContent = '';
+      displayedCaptionIndex = -1;
+      return;
+    }
+    if (force || index !== displayedCaptionIndex) {
+      captionText.textContent = cues[index].text;
+      displayedCaptionIndex = index;
+    }
+    captionOverlay.hidden = false;
+  }
+
+  function updateCaptionPosition() {
+    // object-fit: contain can add letterboxing above/below the video;
+    // anchor the text above the controls of the *visible* video frame.
+    if (!(video.videoWidth > 0 && video.videoHeight > 0)) return;
+    const { width, height } = videoWrap.getBoundingClientRect();
+    const displayedHeight = Math.min(height, width * video.videoHeight / video.videoWidth);
+    videoWrap.style.setProperty('--video-letterbox-y', Math.max(0, (height - displayedHeight) / 2) + 'px');
+  }
+
+  function updateActive(forceScroll=false) {
+    const index = getActiveIndex(video.currentTime || 0);
+    updateCaptions(index);
+    if (index !== activeCueIndex || forceScroll) {
+      cueElements.get(activeCueIndex)?.classList.remove('active');
+      cueElements.get(index)?.classList.add('active');
+      activeCueIndex = index;
+      if ((follow.checked || forceScroll) && index >= 0 && !search.value.trim()) centerOnCue(index);
+    }
+    $('durationLabel').textContent = timeLabel(video.currentTime) + ' / ' + timeLabel(video.duration);
+  }
+
+  function render() {
+    const query = search.value.trim();
+    const fragment = document.createDocumentFragment();
+    cueElements = new Map();
+    let shown = 0;
+    cues.forEach((cue, index) => {
+      if (query && !(cue.text + ' ' + cue.speaker).toLocaleLowerCase().includes(query.toLocaleLowerCase())) return;
+      shown++;
+      const button = document.createElement('button');
+      button.type = 'button'; button.className = 'cue';
+      if (index === activeCueIndex) button.classList.add('active');
+      button.title = 'Jump to ' + timeLabel(cue.start);
+      const top = document.createElement('div'); top.className = 'cue-top';
+      const speaker = document.createElement('span'); speaker.className = 'cue-speaker'; speaker.textContent = cue.speaker || 'Transcript';
+      const timestamp = document.createElement('span'); timestamp.className = 'cue-time'; timestamp.textContent = timeLabel(cue.start);
+      const body = document.createElement('div'); body.className = 'cue-text';
+      appendMarkedText(body, cue.text, query);
+      top.append(speaker, timestamp); button.append(top, body);
+      button.addEventListener('click', () => { video.currentTime = cue.start + 0.02; updateActive(true); if (video.src) video.play().catch(() => {}); });
+      fragment.appendChild(button); cueElements.set(index, button);
+    });
+    list.replaceChildren(fragment);
+    if (!shown) {
+      const empty = document.createElement('div'); empty.className = 'empty';
+      const strong = document.createElement('strong'); strong.textContent = cues.length ? 'No matching transcript lines' : 'No transcript loaded yet';
+      empty.append(strong, document.createTextNode(cues.length ? 'Try a different search term.' : 'Choose your .vtt file above.'));
+      list.appendChild(empty);
+    }
+    $('counter').textContent = query ? shown + ' matches' : cues.length + ' lines';
+  }
+
+  function setVideo(file) {
+    if (videoUrl) URL.revokeObjectURL(videoUrl);
+    videoUrl = URL.createObjectURL(file);
+    video.src = videoUrl;
+    video.hidden = false;
+    $('videoPlaceholder').hidden = true;
+    $('videoName').textContent = file.name;
+    $('videoName').title = file.name;
+    $('videoTitle').textContent = file.name;
+    fullscreenToggle.disabled = false;
+    displayedCaptionIndex = -2;
+    updateCaptions(-1);
+    note.style.color = '';
+    note.textContent = 'Video loaded';
+  }
+
+  async function setVtt(file) {
+    try {
+      const raw = await file.text();
+      const parsed = parseVtt(raw);
+      if (!parsed.length) throw new Error('No timed WebVTT cues were found in this file.');
+      cues = parsed; activeCueIndex = -1; displayedCaptionIndex = -2;
+      captionsToggle.disabled = false;
+      search.value = ''; search.disabled = false;
+      $('vttName').textContent = file.name;
+      $('vttName').title = file.name;
+      note.style.color = '';
+      note.textContent = 'Transcript loaded: ' + cues.length + ' lines · CC ' + (captionsEnabled ? 'on' : 'off');
+      render(); updateActive(true);
+    } catch (error) {
+      note.textContent = 'Could not read transcript: ' + error.message;
+      note.style.color = '#b42318';
+    }
+  }
+
+  captionsToggle.addEventListener('click', () => {
+    captionsEnabled = !captionsEnabled;
+    captionsToggle.textContent = captionsEnabled ? 'CC On' : 'CC Off';
+    captionsToggle.setAttribute('aria-pressed', String(captionsEnabled));
+    updateCaptions(getActiveIndex(video.currentTime || 0), true);
+  });
+
+  // Fullscreen the wrapper (not the native video element), so the overlay stays visible.
+  fullscreenToggle.addEventListener('click', async () => {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else if (document.webkitFullscreenElement) document.webkitExitFullscreen();
+      else if (videoWrap.requestFullscreen) await videoWrap.requestFullscreen();
+      else if (videoWrap.webkitRequestFullscreen) videoWrap.webkitRequestFullscreen();
+      else note.textContent = 'Fullscreen is not available in this browser.';
+      updateCaptionPosition();
+    } catch (error) { note.textContent = 'Could not enter fullscreen: ' + error.message; }
+  });
+  const syncFullscreenButton = () => {
+    const full = document.fullscreenElement === videoWrap || document.webkitFullscreenElement === videoWrap;
+    fullscreenToggle.textContent = full ? '⛶ Exit fullscreen' : '⛶ Fullscreen';
+    updateCaptionPosition();
+  };
+  document.addEventListener('fullscreenchange', syncFullscreenButton);
+  document.addEventListener('webkitfullscreenchange', syncFullscreenButton);
+  window.addEventListener('resize', updateCaptionPosition);
+  video.addEventListener('loadedmetadata', updateCaptionPosition);
+
+  $('videoFile').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) setVideo(file); });
+  $('vttFile').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) setVtt(file); });
+  search.addEventListener('input', () => { render(); if (!search.value) updateActive(true); });
+  $('jump').addEventListener('click', () => { search.value = ''; render(); updateActive(true); });
+  video.addEventListener('timeupdate', () => updateActive());
+  video.addEventListener('seeked', () => updateActive());
+  video.addEventListener('loadedmetadata', () => updateActive());
+  video.addEventListener('error', () => { note.style.color='#b42318'; note.textContent='Unable to play this video in your browser. Try Chrome or a compatible MP4.'; });
+  const isVideo = f => f.type.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/i.test(f.name);
+  const isVtt = f => /\.vtt$/i.test(f.name);
+  document.addEventListener('dragover', e => { if (e.dataTransfer?.types.includes('Files')) { e.preventDefault(); document.body.classList.add('dragging'); } });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) document.body.classList.remove('dragging'); });
+  document.addEventListener('drop', e => {
+    e.preventDefault(); document.body.classList.remove('dragging');
+    const files = [...(e.dataTransfer?.files || [])];
+    const vid = files.find(isVideo), vtt = files.find(isVtt);
+    if (vid) setVideo(vid);
+    if (vtt) setVtt(vtt);
+    if (!vid && !vtt) note.textContent='Choose an MP4 video and/or VTT transcript.';
+  });
+})();
+</script>
+</body>
+</html>
